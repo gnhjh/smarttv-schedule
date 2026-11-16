@@ -12,6 +12,17 @@
 name: Publish schedule
 
 on:
+  # Every six hours, off the top of the hour (GitHub delays busy minutes, and
+  # may run late): the week covering now + 48 h is published well before Monday.
+  schedule:
+    - cron: '17 */6 * * *'
+  # An edit to the line-up, the weekly files, the tool or this workflow.
+  push:
+    branches: [main]
+    paths:
+      - 'source/**'
+      - 'tools/**'
+      - '.github/workflows/publish.yml'
   workflow_dispatch:
     inputs:
       dry_run:
