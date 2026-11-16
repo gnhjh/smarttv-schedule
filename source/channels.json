@@ -1,0 +1,13 @@
+{
+  "//": "THE PUBLIC LINE-UP - the source GitHub Actions publishes from (GOAL 7; tools/schedule-tool.mjs), and what `npm run publish:public -- --at <instant>` publishes with the full SmartTV publisher on the household PC. Written channels only: a channel with time rules is published as a weekly file in source/weeks (see README.md). Everything here is public by design: only programmes anybody may know about, no household files, no provider addresses - the publisher refuses a public file that carries a household file. Where a programme plays from is NOT here: the app has its own list of approved sources (android-app/src/standalone/previewSources.ts), so adding a programme can never add an address. A channel with time rules covers one week per file and must be republished each week, before Monday 00:00 - see docs/goals/GOAL-6.md.",
+  "channels": [
+    {
+      "//": "Tears of Steel (Blender Foundation, 2012, CC BY 3.0) on a loop. Exactly as long as its approved file - 734.167 s - so the broadcast and the film end together.",
+      "id": "open-movies",
+      "number": 5,
+      "name": "Open Movies (updated)",
+      "epoch": "2026-11-01T00:00:00Z",
+      "schedule": [{ "contentId": "tmdb:movie:133701", "title": "Tears of Steel", "durationSeconds": 734.167 }]
+    }
+  ]
+}

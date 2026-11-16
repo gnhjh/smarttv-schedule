@@ -1,0 +1,109 @@
+# Publishes the public SmartTV schedule to GitHub Pages.
+#
+#   build   lays out source/channels.json, picks the right week from
+#           source/weeks, checks everything, and compares with what is live
+#   deploy  only when the content changed (or a run asked for it), and never
+#           in a dry run: an Actions Pages deployment of the checked file
+#   verify  fetches the public address until it serves exactly those bytes,
+#           and checks them again - a green deploy alone proves nothing
+#
+# A failed build or check publishes nothing: the live schedule stays as it is.
+# No secret is used; the token has only what each job needs.
+name: Publish schedule
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and check only - publish nothing
+        type: boolean
+        default: false
+      force:
+        description: Publish even if nothing changed
+        type: boolean
+        default: false
+      self_test_failure:
+        description: Self-test - break the build on purpose; nothing may be published
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  SCHEDULE_URL: https://gnhjh.github.io/smarttv-schedule/schedule-v2.json
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.build.outputs.changed }}
+      sha256: ${{ steps.build.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The schedule live now
+        run: |
+          if curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$SCHEDULE_URL" -o previous.json; then
+            echo "live: $(sha256sum previous.json)"
+          else
+            echo "the live schedule could not be fetched; comparing with the last manual copy"
+            cp schedule-v2.json previous.json
+          fi
+      - name: Build and check
+        id: build
+        env:
+          SELF_TEST: ${{ inputs.self_test_failure && '--self-test-corrupt' || '' }}
+        run: |
+          node --version
+          node tools/schedule-tool.mjs build --at "$(date -u +%Y-%m-%dT%H:%M:00Z)" --out _site --previous previous.json $SELF_TEST
+      - name: Keep the checked file for deployment
+        if: steps.build.outputs.changed == 'true' || inputs.force
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: (needs.build.outputs.changed == 'true' || inputs.force) && !inputs.dry_run
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  verify:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The public address serves exactly what was built
+        env:
+          EXPECTED: ${{ needs.build.outputs.sha256 }}
+        run: |
+          for attempt in $(seq 1 40); do
+            curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$SCHEDULE_URL?verify=${GITHUB_RUN_ID}-${attempt}" -o live.json || true
+            if [ -f live.json ] && [ "$(sha256sum live.json | cut -d' ' -f1)" = "$EXPECTED" ]; then
+              echo "served after attempt $attempt: $(sha256sum live.json)"
+              node tools/schedule-tool.mjs check live.json
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "the public address did not serve sha256 $EXPECTED within 10 minutes"
+          exit 1
